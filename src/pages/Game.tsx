@@ -247,6 +247,8 @@ function Game({ roomCode, playerId, setScreen }: Props) {
   async function callMeeting() {
     if (!player || player.meetingUsed) return;
 
+    playAlarm();
+
     await update(ref(db), {
       [`rooms/${roomCode}/status`]: "meeting",
       [`rooms/${roomCode}/players/${playerId}/meetingUsed`]: true,
@@ -260,6 +262,8 @@ function Game({ roomCode, playerId, setScreen }: Props) {
 
   async function reportBody() {
     if (!player) return;
+
+    playAlarm();
 
     await update(ref(db), {
       [`rooms/${roomCode}/status`]: "meeting",
