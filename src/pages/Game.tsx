@@ -114,13 +114,74 @@ function Game({ roomCode, playerId, setScreen }: Props) {
     return () => unsubscribe();
   }, [roomCode, playerId, setScreen]);
 
+  function getRandomNumber(min: number, max: number) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
   function generateMathTask() {
-    const a = Math.floor(Math.random() * 12) + 1;
-    const b = Math.floor(Math.random() * 12) + 1;
+    const template = getRandomNumber(1, 5);
+
+    let text = "";
+    let answer = 0;
+
+    if (template === 1) {
+      const a = getRandomNumber(4, 12);
+      const b = getRandomNumber(2, 9);
+      const c = getRandomNumber(3, 10);
+      const d = getRandomNumber(2, 6);
+      const e = getRandomNumber(1, 9);
+
+      text = `${a} + ${b} × ${c} - (${d} + ${e})`;
+      answer = a + b * c - (d + e);
+    }
+
+    if (template === 2) {
+      const a = getRandomNumber(2, 8);
+      const b = getRandomNumber(3, 9);
+      const c = getRandomNumber(2, 6);
+      const d = getRandomNumber(5, 14);
+      const e = getRandomNumber(1, 8);
+
+      text = `(${a} + ${b}) × ${c} - ${d} + ${e}`;
+      answer = (a + b) * c - d + e;
+    }
+
+    if (template === 3) {
+      const b = getRandomNumber(2, 9);
+      const c = getRandomNumber(2, 8);
+      const d = getRandomNumber(2, 6);
+      const e = getRandomNumber(3, 10);
+      const a = b * c;
+
+      text = `${a} ÷ ${b} + ${d} × (${e} - ${c})`;
+      answer = a / b + d * (e - c);
+    }
+
+    if (template === 4) {
+      const a = getRandomNumber(2, 6);
+      const b = getRandomNumber(2, 5);
+      const c = getRandomNumber(3, 12);
+      const d = getRandomNumber(1, 8);
+      const e = getRandomNumber(2, 7);
+
+      text = `${a} × (${b} + ${c}) - ${d} × ${e}`;
+      answer = a * (b + c) - d * e;
+    }
+
+    if (template === 5) {
+      const a = getRandomNumber(10, 25);
+      const b = getRandomNumber(2, 6);
+      const c = getRandomNumber(2, 9);
+      const d = getRandomNumber(1, 5);
+      const e = getRandomNumber(2, 6);
+
+      text = `${a} - (${b} × ${c}) + ${d} × ${e}`;
+      answer = a - b * c + d * e;
+    }
 
     return {
-      text: `${a} + ${b}`,
-      answer: a + b,
+      text,
+      answer,
       completed: false,
       type: "math" as const,
     };
@@ -133,9 +194,11 @@ function Game({ roomCode, playerId, setScreen }: Props) {
     if (task.completed) return;
 
     if (task.type === "math") {
-      const answer = window.prompt(`Solve: ${task.text}`);
+      const answer = window.prompt(`Solve using PEMDAS:\n${task.text}`);
 
-      if (Number(answer) !== task.answer) {
+      if (answer === null) return;
+
+      if (Number(answer.trim()) !== task.answer) {
         alert("Wrong answer. Try again.");
         return;
       }
@@ -250,11 +313,13 @@ function Game({ roomCode, playerId, setScreen }: Props) {
   const aliveCrewmates = alivePlayers.filter((p) => p.role === "crewmate").length;
   const aliveImpostors = alivePlayers.filter((p) => p.role === "impostor").length;
   const impostorsCanWin = aliveImpostors > 0 && aliveCrewmates <= aliveImpostors;
+  const impostorsEliminated = room?.status === "game" && aliveCrewmates > 0 && aliveImpostors === 0;
+  const crewmatesCanWin = crewTasksComplete || impostorsEliminated;
 
   useEffect(() => {
     if (!roomCode || !room || !player || taskWinTriggered.current) return;
-    if (!crewTasksComplete) return;
-    if (room.status === "crewTaskWin") return;
+    if (!crewmatesCanWin) return;
+    if (room.status === "crewTaskWin" || room.status === "impostorWin") return;
 
     taskWinTriggered.current = true;
 
@@ -266,7 +331,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
         timestamp: new Date().getTime(),
       },
     });
-  }, [crewTasksComplete, player, room, roomCode]);
+  }, [crewmatesCanWin, player, room, roomCode]);
 
   useEffect(() => {
     if (!roomCode || !room || !player || impostorWinTriggered.current) return;
@@ -314,7 +379,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
 
             <p>
               {activeAlert.type === "taskWin"
-                ? "All crewmate tasks are complete."
+                ? "Crewmates completed their objective or eliminated the impostor."
                 : activeAlert.type === "impostorWin"
                 ? "Only the impostors remain in control."
                 : `Called by ${activeAlert.triggeredBy}`}
@@ -408,7 +473,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
               disabled={room?.status === "crewTaskWin" || room?.status === "impostorWin"}
             >
               {task.completed ? "✅ " : "⬜ "}
-              {task.type === "math" ? `Solve: ${task.text}` : task.text}
+              {task.type === "math" ? `PEMDAS: ${task.text}` : task.text}
             </button>
           ))}
         </div>

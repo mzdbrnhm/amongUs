@@ -23,11 +23,17 @@ type Player = {
   tasks?: Task[];
 };
 
+type RoomSettings = {
+  impostorCount?: number;
+  tasksPerPlayer?: number;
+};
+
 type Room = {
   status: string;
   hostId: string;
   players?: Record<string, Player>;
   lastImpostorIds?: string[];
+  settings?: RoomSettings;
 };
 
 type Props = {
@@ -115,6 +121,21 @@ function Lobby({
   const amHost = room?.hostId === playerId;
   const playerCount = players.length;
 
+  const maxImpostors = Math.max(1, Math.floor((playerCount - 1) / 2));
+  const impostorSetting = Math.min(
+    room?.settings?.impostorCount ?? 1,
+    maxImpostors
+  );
+  const tasksPerPlayerSetting = room?.settings?.tasksPerPlayer ?? 5;
+
+  async function updateSetting(key: keyof RoomSettings, value: number) {
+    if (!roomCode || !amHost) return;
+
+    await update(ref(db, `rooms/${roomCode}/settings`), {
+      [key]: value,
+    });
+  }
+
   async function startGame() {
     if (!room || !room.players || !amHost) return;
 
@@ -125,7 +146,12 @@ function Lobby({
       return;
     }
 
-    const impostorCount = 1;
+    if (impostorSetting > maxImpostors) {
+      alert(`Too many impostors. Max for this lobby is ${maxImpostors}.`);
+      return;
+    }
+
+    const impostorCount = impostorSetting;
     const impostorIds = pickImpostorIds(playerEntries, impostorCount);
 
     const updates: Record<string, unknown> = {};
@@ -136,7 +162,7 @@ function Lobby({
 
       const assignedTasks = [...taskPool]
         .sort(() => Math.random() - 0.5)
-        .slice(0, 5)
+        .slice(0, tasksPerPlayerSetting)
         .map((task) => ({
           text: task,
           completed: false,
@@ -186,6 +212,59 @@ function Lobby({
         <div className="room-code">{roomCode}</div>
         <span>Share this code with your friends</span>
       </div>
+
+      {amHost && (
+        <div className="lobby-panel">
+          <div className="panel-header">
+            <h2>Settings</h2>
+            <span>Host Only</span>
+          </div>
+
+          <div className="settings-list">
+            <label className="setting-row">
+              <div>
+                <strong>Impostors</strong>
+                <span>Max {maxImpostors} for {playerCount} players</span>
+              </div>
+
+              <select
+                value={impostorSetting}
+                onChange={(e) =>
+                  updateSetting("impostorCount", Number(e.target.value))
+                }
+              >
+                {Array.from({ length: maxImpostors }, (_, index) => index + 1).map(
+                  (amount) => (
+                    <option key={amount} value={amount}>
+                      {amount}
+                    </option>
+                  )
+                )}
+              </select>
+            </label>
+
+            <label className="setting-row">
+              <div>
+                <strong>Tasks</strong>
+                <span>Tasks per player</span>
+              </div>
+
+              <select
+                value={tasksPerPlayerSetting}
+                onChange={(e) =>
+                  updateSetting("tasksPerPlayer", Number(e.target.value))
+                }
+              >
+                {[3, 4, 5, 6, 7, 8, 9, 10].map((amount) => (
+                  <option key={amount} value={amount}>
+                    {amount}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
 
       <div className="lobby-panel">
         <div className="panel-header">
