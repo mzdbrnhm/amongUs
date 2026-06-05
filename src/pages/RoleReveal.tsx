@@ -43,6 +43,16 @@ function RoleReveal({ roomCode, playerId, setScreen }: Props) {
     return () => unsubscribe();
   }, [roomCode, playerId, setScreen]);
 
+  useEffect(() => {
+    if (!player?.role) return;
+
+    const timer = window.setTimeout(() => {
+      setScreen("game");
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [player?.role, setScreen]);
+
   if (!player) {
     return (
       <div className="app">
@@ -79,7 +89,7 @@ function RoleReveal({ roomCode, playerId, setScreen }: Props) {
         </div>
       </div>
 
-      <button onClick={() => setScreen("game")}>Continue</button>
+      <p className="waiting-text">Tasks loading in 3 seconds...</p>
     </div>
   );
 }
