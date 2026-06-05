@@ -1,0 +1,17 @@
+export const TASKS = [
+  "Touch the front door",
+  "Get a glass of water",
+  "Sit on the couch for 5 seconds",
+  "Do 10 jumping jacks",
+  "Find something red",
+  "Walk to the kitchen",
+  "Take a selfie",
+  "Count to 20 out loud",
+  "Spin around 3 times",
+  "Touch a light switch",
+  "Find a spoon",
+  "Stand by a window",
+  "Put one hand on the floor",
+  "Find something blue",
+  "Walk to the bathroom door",
+];
