@@ -426,6 +426,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
 
   async function submitO2Code(location: "A" | "B") {
     if (!room?.sabotage || room.sabotage.type !== "o2") return;
+    if (!player || !player.alive) return;
 
     const correctCode = location === "A" ? room.sabotage.codeA : room.sabotage.codeB;
     const locationName = location === "A" ? "Camper" : "Bathroom";
@@ -454,7 +455,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
 
   async function setReactorHolding(isHolding: boolean) {
     if (!room?.sabotage || room.sabotage.type !== "reactor") return;
-    if (!player || player.role !== "crewmate" || !player.alive) return;
+    if (!player || !player.alive) return;
 
     await update(ref(db), {
       [`rooms/${roomCode}/sabotage/reactorHolders/${playerId}`]: isHolding ? true : null,
@@ -638,7 +639,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
 
             <h2>{sabotageSecondsLeft}s</h2>
 
-            {sabotage.type === "o2" && player.role === "crewmate" && player.alive && (
+            {sabotage.type === "o2" && player.alive && (
               <div className="meeting-actions">
                 <button
                   className={sabotage.fixedA ? "secondary" : "start-button"}
@@ -658,7 +659,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
               </div>
             )}
 
-            {sabotage.type === "reactor" && player.role === "crewmate" && player.alive && (
+            {sabotage.type === "reactor" && player.alive && (
               <div className="meeting-actions">
                 <p>{reactorHolderCount}/2 holding reactor at Shop and Cornhole</p>
                 <button
