@@ -677,6 +677,18 @@ function Game({ roomCode, playerId, setScreen }: Props) {
             {sabotage.type === "freeze" && sabotage.freezeTargetId === playerId && player.alive && (
               <p className="kill-ready">DO NOT MOVE</p>
             )}
+
+            {(sabotage.type === "o2" || sabotage.type === "reactor") && player.alive && (
+              <div className="meeting-actions">
+                <button
+                  className="report-button"
+                  onClick={reportBody}
+                  disabled={isReporting || room?.status !== "game"}
+                >
+                  {isReporting ? "Reporting..." : "Report Body"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
