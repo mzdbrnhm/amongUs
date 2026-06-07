@@ -47,13 +47,74 @@ type Props = {
   setScreen: (screen: Screen) => void;
 };
 
+function getRandomNumber(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function generateMathTask() {
-  const a = Math.floor(Math.random() * 12) + 1;
-  const b = Math.floor(Math.random() * 12) + 1;
+  const template = getRandomNumber(1, 5);
+
+  let text = "";
+  let answer = 0;
+
+  if (template === 1) {
+    const a = getRandomNumber(4, 12);
+    const b = getRandomNumber(2, 9);
+    const c = getRandomNumber(3, 10);
+    const d = getRandomNumber(2, 6);
+    const e = getRandomNumber(1, 9);
+
+    text = `${a} + ${b} × ${c} - (${d} + ${e})`;
+    answer = a + b * c - (d + e);
+  }
+
+  if (template === 2) {
+    const a = getRandomNumber(2, 8);
+    const b = getRandomNumber(3, 9);
+    const c = getRandomNumber(2, 6);
+    const d = getRandomNumber(5, 14);
+    const e = getRandomNumber(1, 8);
+
+    text = `(${a} + ${b}) × ${c} - ${d} + ${e}`;
+    answer = (a + b) * c - d + e;
+  }
+
+  if (template === 3) {
+    const b = getRandomNumber(2, 9);
+    const c = getRandomNumber(2, 8);
+    const d = getRandomNumber(2, 6);
+    const e = getRandomNumber(3, 10);
+    const a = b * c;
+
+    text = `${a} ÷ ${b} + ${d} × (${e} - ${c})`;
+    answer = a / b + d * (e - c);
+  }
+
+  if (template === 4) {
+    const a = getRandomNumber(2, 6);
+    const b = getRandomNumber(2, 5);
+    const c = getRandomNumber(3, 12);
+    const d = getRandomNumber(1, 8);
+    const e = getRandomNumber(2, 7);
+
+    text = `${a} × (${b} + ${c}) - ${d} × ${e}`;
+    answer = a * (b + c) - d * e;
+  }
+
+  if (template === 5) {
+    const a = getRandomNumber(10, 25);
+    const b = getRandomNumber(2, 6);
+    const c = getRandomNumber(2, 9);
+    const d = getRandomNumber(1, 5);
+    const e = getRandomNumber(2, 6);
+
+    text = `${a} - (${b} × ${c}) + ${d} × ${e}`;
+    answer = a - b * c + d * e;
+  }
 
   return {
-    text: `${a} + ${b}`,
-    answer: a + b,
+    text,
+    answer,
     completed: false,
     type: "math" as const,
   };
@@ -109,6 +170,10 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
     update(ref(db), {
       [`rooms/${roomCode}/meetingEndsAt`]: new Date().getTime() + 120000,
       [`rooms/${roomCode}/meetingResult`]: null,
+      [`rooms/${roomCode}/sabotage/active`]: false,
+      [`rooms/${roomCode}/sabotage/type`]: null,
+      [`rooms/${roomCode}/sabotage/expiresAt`]: 0,
+      [`rooms/${roomCode}/sabotage/reactorHolders`] : null,
     });
   }, [room, roomCode]);
 
@@ -214,6 +279,10 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
     updates[`rooms/${roomCode}/status`] = "meetingReveal";
     updates[`rooms/${roomCode}/meetingResult`] = meetingResult;
     updates[`rooms/${roomCode}/alert`] = null;
+    updates[`rooms/${roomCode}/sabotage/active`] = false;
+    updates[`rooms/${roomCode}/sabotage/type`] = null;
+    updates[`rooms/${roomCode}/sabotage/expiresAt`] = 0;
+    updates[`rooms/${roomCode}/sabotage/reactorHolders`] = null;
 
     await update(ref(db), updates);
   }
@@ -266,6 +335,9 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
 
     updates[`rooms/${roomCode}/status`] = "lobby";
     updates[`rooms/${roomCode}/alert`] = null;
+    updates[`rooms/${roomCode}/sabotage`] = null;
+    updates[`rooms/${roomCode}/meetingEndsAt`] = null;
+    updates[`rooms/${roomCode}/meetingResult`] = null;
 
     await update(ref(db), updates);
   }

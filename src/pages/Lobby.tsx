@@ -183,6 +183,9 @@ function Lobby({
 
     updates[`rooms/${roomCode}/lastImpostorIds`] = impostorIds;
     updates[`rooms/${roomCode}/alert`] = null;
+    updates[`rooms/${roomCode}/sabotage`] = null;
+    updates[`rooms/${roomCode}/meetingEndsAt`] = null;
+    updates[`rooms/${roomCode}/meetingResult`] = null;
     updates[`rooms/${roomCode}/status`] = "roleReveal";
 
     await update(ref(db), updates);

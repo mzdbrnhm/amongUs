@@ -12,6 +12,9 @@ function Home({ setScreen }: Props) {
 
       <button onClick={() => setScreen("host")}>Host Game</button>
       <button onClick={() => setScreen("join")}>Join Game</button>
+      <button className="secondary" onClick={() => setScreen("emergencyButton")}>
+        Emergency Button
+      </button>
     </div>
   );
 }

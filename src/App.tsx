@@ -6,9 +6,10 @@ import Lobby from "./pages/Lobby";
 import RoleReveal from "./pages/RoleReveal";
 import Game from "./pages/Game";
 import Meeting from "./pages/Meeting";
+import EmergencyButton from "./pages/EmergencyButton";
 import { useState } from "react";
 
-export type Screen = "home" | "host" | "join" | "lobby" | "roleReveal" | "game" | "meeting";
+export type Screen = "home" | "host" | "join" | "lobby" | "roleReveal" | "game" | "meeting" | "emergencyButton";
 
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
@@ -75,6 +76,10 @@ function App() {
         setScreen={setScreen}
       />
     );
+  }
+
+  if (screen === "emergencyButton") {
+    return <EmergencyButton setScreen={setScreen} />;
   }
 
   return <Home setScreen={setScreen} />;
