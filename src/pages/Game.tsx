@@ -53,8 +53,8 @@ type Props = {
 };
 
 const KILL_COOLDOWN = 30000;
-const SABOTAGE_COOLDOWN = 60000;
-const LONG_SABOTAGE_DURATION = 90000;
+const SABOTAGE_COOLDOWN = 20000;
+const LONG_SABOTAGE_DURATION = 20000;
 const FREEZE_DURATION = 30000;
 
 function Game({ roomCode, playerId, setScreen }: Props) {
@@ -65,6 +65,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
   const [isReporting, setIsReporting] = useState(false);
   const [isChoosingFreezeTarget, setIsChoosingFreezeTarget] = useState(false);
   const lastAlertTimestamp = useRef<number | null>(null);
+  const lastFreezeAlarmExpiresAt = useRef<number | null>(null);
   const taskWinTriggered = useRef(false);
   const impostorWinTriggered = useRef(false);
   const sabotageWinTriggered = useRef(false);
@@ -153,6 +154,20 @@ function Game({ roomCode, playerId, setScreen }: Props) {
       ) {
         lastAlertTimestamp.current = roomData.alert.timestamp;
         setActiveAlert(roomData.alert);
+        playAlarm();
+      }
+
+      const activeFreeze = roomData.sabotage?.active === true && roomData.sabotage?.type === "freeze";
+      const isFrozenPlayer = roomData.sabotage?.freezeTargetId === playerId;
+      const freezeExpiresAt = roomData.sabotage?.expiresAt ?? null;
+
+      if (
+        activeFreeze &&
+        isFrozenPlayer &&
+        freezeExpiresAt &&
+        freezeExpiresAt !== lastFreezeAlarmExpiresAt.current
+      ) {
+        lastFreezeAlarmExpiresAt.current = freezeExpiresAt;
         playAlarm();
       }
     });
@@ -384,7 +399,9 @@ function Game({ roomCode, playerId, setScreen }: Props) {
       sabotage.freezeTargetName = freezeTarget.name;
     }
 
-    playAlarm();
+    if (type !== "freeze") {
+      playAlarm();
+    }
 
     await update(ref(db), {
       [`rooms/${roomCode}/sabotage`]: sabotage,
@@ -615,7 +632,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
               {sabotage.type === "o2"
                 ? "Emergency button disabled. Head to Camper and Bathroom."
                 : sabotage.type === "reactor"
-                ? "Emergency button disabled. Head to Shop and Cornhole. Three crewmates must hold the reactor."
+                ? "Emergency button disabled. Head to Shop and Cornhole. Two crewmates must hold the reactor."
                 : "You have been frozen. Do not move."}
             </p>
 
