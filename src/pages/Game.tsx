@@ -411,7 +411,8 @@ function Game({ roomCode, playerId, setScreen }: Props) {
     if (!room?.sabotage || room.sabotage.type !== "o2") return;
 
     const correctCode = location === "A" ? room.sabotage.codeA : room.sabotage.codeB;
-    const answer = window.prompt(`Enter Location ${location} O2 code:`);
+    const locationName = location === "A" ? "Camper" : "Bathroom";
+    const answer = window.prompt(`Enter ${locationName} O2 code:`);
 
     if (answer === null) return;
 
@@ -550,7 +551,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
   useEffect(() => {
     if (!roomCode || !sabotageActive) return;
     if (sabotage?.type !== "reactor") return;
-    if (reactorHolderCount < 3) return;
+    if (reactorHolderCount < 2) return;
 
     clearSabotage();
   }, [roomCode, sabotageActive, sabotage?.type, reactorHolderCount]);
@@ -612,9 +613,9 @@ function Game({ roomCode, playerId, setScreen }: Props) {
 
             <p>
               {sabotage.type === "o2"
-                ? "Emergency button disabled. Head to Location A and Location B."
+                ? "Emergency button disabled. Head to Camper and Bathroom."
                 : sabotage.type === "reactor"
-                ? "Emergency button disabled. Three crewmates must hold the reactor."
+                ? "Emergency button disabled. Head to Shop and Cornhole. Three crewmates must hold the reactor."
                 : "You have been frozen. Do not move."}
             </p>
 
@@ -627,7 +628,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
                   disabled={sabotage.fixedA}
                   onClick={() => submitO2Code("A")}
                 >
-                  {sabotage.fixedA ? "Location A Fixed" : `Location A Code: ${sabotage.codeA}`}
+                  {sabotage.fixedA ? "Camper Fixed" : `Camper Code: ${sabotage.codeA}`}
                 </button>
 
                 <button
@@ -635,14 +636,14 @@ function Game({ roomCode, playerId, setScreen }: Props) {
                   disabled={sabotage.fixedB}
                   onClick={() => submitO2Code("B")}
                 >
-                  {sabotage.fixedB ? "Location B Fixed" : `Location B Code: ${sabotage.codeB}`}
+                  {sabotage.fixedB ? "Bathroom Fixed" : `Bathroom Code: ${sabotage.codeB}`}
                 </button>
               </div>
             )}
 
             {sabotage.type === "reactor" && player.role === "crewmate" && player.alive && (
               <div className="meeting-actions">
-                <p>{reactorHolderCount}/3 holding reactor</p>
+                <p>{reactorHolderCount}/2 holding reactor at Shop and Cornhole</p>
                 <button
                   className="start-button"
                   onPointerDown={() => setReactorHolding(true)}
@@ -650,7 +651,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
                   onPointerLeave={() => setReactorHolding(false)}
                   onTouchEnd={() => setReactorHolding(false)}
                 >
-                  Hold Reactor
+                  Hold Reactor at Shop/Cornhole
                 </button>
               </div>
             )}
