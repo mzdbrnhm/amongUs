@@ -23,6 +23,8 @@ function EmergencyButton({ setScreen }: Props) {
   const [roomCode, setRoomCode] = useState("");
   const [room, setRoom] = useState<Room | null>(null);
   const [error, setError] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isPressing, setIsPressing] = useState(false);
   const [now, setNow] = useState(0);
 
   useEffect(() => {
@@ -38,7 +40,12 @@ function EmergencyButton({ setScreen }: Props) {
         return;
       }
 
-      setRoom(snapshot.val());
+      const roomData = snapshot.val();
+      setRoom(roomData);
+
+      if (roomData.status === "game") {
+        setIsPressing(false);
+      }
     });
 
     return () => unsubscribe();
@@ -62,6 +69,7 @@ function EmergencyButton({ setScreen }: Props) {
   }
 
   async function connectToRoom() {
+    if (isConnecting) return;
     const code = roomInput.trim().toUpperCase();
 
     if (!code) {
@@ -69,19 +77,29 @@ function EmergencyButton({ setScreen }: Props) {
       return;
     }
 
-    const snapshot = await get(child(ref(db), `rooms/${code}`));
+    setIsConnecting(true);
 
-    if (!snapshot.exists()) {
-      setError("Room not found.");
-      return;
+    try {
+      const snapshot = await get(child(ref(db), `rooms/${code}`));
+
+      if (!snapshot.exists()) {
+        setError("Room not found.");
+        setIsConnecting(false);
+        return;
+      }
+
+      setError("");
+      setRoomCode(code);
+      setIsConnecting(false);
+    } catch (error) {
+      console.error("Failed to connect emergency button:", error);
+      setError("Could not connect to room. Please try again.");
+      setIsConnecting(false);
     }
-
-    setError("");
-    setRoomCode(code);
   }
 
   async function pressEmergencyButton() {
-    if (!roomCode || !room) return;
+    if (isPressing || !roomCode || !room) return;
 
     const sabotageDisabled =
       room.sabotage?.active === true &&
@@ -91,22 +109,28 @@ function EmergencyButton({ setScreen }: Props) {
 
     if (sabotageDisabled || gameStateDisabled) return;
 
+    setIsPressing(true);
     playAlarm();
 
-    await update(ref(db), {
-      [`rooms/${roomCode}/status`]: "meeting",
-      [`rooms/${roomCode}/alert`]: {
-        type: "meeting",
-        triggeredBy: "Emergency Button",
-        timestamp: new Date().getTime(),
-      },
-      [`rooms/${roomCode}/meetingEndsAt`]: null,
-      [`rooms/${roomCode}/meetingResult`]: null,
-      [`rooms/${roomCode}/sabotage/active`]: false,
-      [`rooms/${roomCode}/sabotage/type`]: null,
-      [`rooms/${roomCode}/sabotage/expiresAt`]: 0,
-      [`rooms/${roomCode}/sabotage/reactorHolders`]: null,
-    });
+    try {
+      await update(ref(db), {
+        [`rooms/${roomCode}/status`]: "meeting",
+        [`rooms/${roomCode}/alert`]: {
+          type: "meeting",
+          triggeredBy: "Emergency Button",
+          timestamp: new Date().getTime(),
+        },
+        [`rooms/${roomCode}/meetingEndsAt`]: null,
+        [`rooms/${roomCode}/meetingResult`]: null,
+        [`rooms/${roomCode}/sabotage/active`]: false,
+        [`rooms/${roomCode}/sabotage/type`]: null,
+        [`rooms/${roomCode}/sabotage/expiresAt`]: 0,
+        [`rooms/${roomCode}/sabotage/reactorHolders`]: null,
+      });
+    } catch (error) {
+      console.error("Failed to press emergency button:", error);
+      setIsPressing(false);
+    }
   }
 
   if (!roomCode) {
@@ -127,8 +151,10 @@ function EmergencyButton({ setScreen }: Props) {
           {error && <p>{error}</p>}
         </div>
 
-        <button onClick={connectToRoom}>Connect Button</button>
-        <button className="secondary" onClick={() => setScreen("home")}>
+        <button onClick={connectToRoom} disabled={isConnecting}>
+          {isConnecting ? "Connecting..." : "Connect Button"}
+        </button>
+        <button className="secondary" onClick={() => setScreen("home")} disabled={isConnecting}>
           Back
         </button>
       </div>
@@ -141,7 +167,7 @@ function EmergencyButton({ setScreen }: Props) {
 
   const gameStateDisabled = room?.status !== "game";
 
-  const buttonDisabled = sabotageDisabled || gameStateDisabled;
+  const buttonDisabled = isPressing || sabotageDisabled || gameStateDisabled;
 
   const sabotageSecondsLeft = room?.sabotage?.expiresAt
     ? Math.max(0, Math.ceil((room.sabotage.expiresAt - now) / 1000))
@@ -169,11 +195,15 @@ function EmergencyButton({ setScreen }: Props) {
         onClick={pressEmergencyButton}
         disabled={buttonDisabled}
       >
-        {buttonDisabled ? "DISABLED" : "PRESS"}
+        {isPressing ? "CALLING..." : buttonDisabled ? "DISABLED" : "PRESS"}
       </button>
 
       <p className="waiting-text">
-        {buttonDisabled ? disabledReason : "Physical emergency button is armed."}
+        {isPressing
+          ? "Emergency meeting is being called..."
+          : buttonDisabled
+          ? disabledReason
+          : "Physical emergency button is armed."}
       </p>
 
       {sabotageDisabled && (
@@ -184,8 +214,20 @@ function EmergencyButton({ setScreen }: Props) {
         </div>
       )}
 
-      <button className="secondary" onClick={() => setRoomCode("")}>Change Room</button>
-      <button className="secondary" onClick={() => setScreen("home")}>Back Home</button>
+      <button
+        className="secondary"
+        onClick={() => {
+          setRoomCode("");
+          setIsPressing(false);
+          setIsConnecting(false);
+        }}
+        disabled={isPressing}
+      >
+        Change Room
+      </button>
+      <button className="secondary" onClick={() => setScreen("home")} disabled={isPressing}>
+        Back Home
+      </button>
     </div>
   );
 }

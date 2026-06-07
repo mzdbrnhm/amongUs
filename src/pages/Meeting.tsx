@@ -37,6 +37,7 @@ type Room = {
   hostId: string;
   alert?: GameAlert | null;
   players?: Record<string, Player>;
+  discussionEndsAt?: number;
   meetingEndsAt?: number;
   meetingResult?: MeetingResult | null;
 };
@@ -46,6 +47,9 @@ type Props = {
   playerId: string;
   setScreen: (screen: Screen) => void;
 };
+
+const KILL_COOLDOWN = 30000;
+const SABOTAGE_COOLDOWN = 60000;
 
 function getRandomNumber(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -123,6 +127,8 @@ function generateMathTask() {
 function Meeting({ roomCode, playerId, setScreen }: Props) {
   const [room, setRoom] = useState<Room | null>(null);
   const [now, setNow] = useState(0);
+  const [selectedVote, setSelectedVote] = useState<string | null>(null);
+  const [isConfirmingVote, setIsConfirmingVote] = useState(false);
   const resolvingVote = useRef(false);
 
   useEffect(() => {
@@ -141,6 +147,10 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
 
       const roomData = snapshot.val();
       setRoom(roomData);
+
+      if (roomData.players?.[playerId]?.currentVote) {
+        setIsConfirmingVote(false);
+      }
 
       if (roomData.status === "game") {
         setScreen("game");
@@ -165,25 +175,58 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
   useEffect(() => {
     if (!roomCode || !room) return;
     if (room.status !== "meeting") return;
-    if (room.meetingEndsAt) return;
 
-    update(ref(db), {
-      [`rooms/${roomCode}/meetingEndsAt`]: new Date().getTime() + 120000,
-      [`rooms/${roomCode}/meetingResult`]: null,
-      [`rooms/${roomCode}/sabotage/active`]: false,
-      [`rooms/${roomCode}/sabotage/type`]: null,
-      [`rooms/${roomCode}/sabotage/expiresAt`]: 0,
-      [`rooms/${roomCode}/sabotage/reactorHolders`] : null,
-    });
+    const currentTime = new Date().getTime();
+
+    if (!room.discussionEndsAt) {
+      update(ref(db), {
+        [`rooms/${roomCode}/discussionEndsAt`]: currentTime + 30000,
+        [`rooms/${roomCode}/meetingEndsAt`]: null,
+        [`rooms/${roomCode}/meetingResult`]: null,
+        [`rooms/${roomCode}/sabotage/active`]: false,
+        [`rooms/${roomCode}/sabotage/type`]: null,
+        [`rooms/${roomCode}/sabotage/expiresAt`]: 0,
+        [`rooms/${roomCode}/sabotage/reactorHolders`]: null,
+      });
+      return;
+    }
+
+    if (currentTime >= room.discussionEndsAt && !room.meetingEndsAt) {
+      update(ref(db), {
+        [`rooms/${roomCode}/meetingEndsAt`]: currentTime + 120000,
+      });
+    }
   }, [room, roomCode]);
 
-  async function vote(targetId: string) {
+  function selectVote(targetId: string) {
     const currentPlayer = room?.players?.[playerId];
     if (!currentPlayer || currentPlayer.alive === false) return;
+    if (currentPlayer.currentVote) return;
+    if (room?.status !== "meeting") return;
+    if (!room.meetingEndsAt) return;
 
-    await update(ref(db), {
-      [`rooms/${roomCode}/players/${playerId}/currentVote`]: targetId,
-    });
+    setSelectedVote(targetId);
+  }
+
+  async function confirmVote() {
+    const currentPlayer = room?.players?.[playerId];
+    if (!currentPlayer || currentPlayer.alive === false) return;
+    if (currentPlayer.currentVote) return;
+    if (!selectedVote) return;
+    if (room?.status !== "meeting") return;
+    if (!room.meetingEndsAt) return;
+    if (isConfirmingVote) return;
+
+    setIsConfirmingVote(true);
+
+    try {
+      await update(ref(db), {
+        [`rooms/${roomCode}/players/${playerId}/currentVote`]: selectedVote,
+      });
+    } catch (error) {
+      console.error("Failed to confirm vote:", error);
+      setIsConfirmingVote(false);
+    }
   }
 
   async function resolveVote() {
@@ -278,6 +321,7 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
 
     updates[`rooms/${roomCode}/status`] = "meetingReveal";
     updates[`rooms/${roomCode}/meetingResult`] = meetingResult;
+    updates[`rooms/${roomCode}/discussionEndsAt`] = null;
     updates[`rooms/${roomCode}/alert`] = null;
     updates[`rooms/${roomCode}/sabotage/active`] = false;
     updates[`rooms/${roomCode}/sabotage/type`] = null;
@@ -309,11 +353,30 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
     if (!room || room.status !== "meetingReveal") return;
 
     const timer = window.setTimeout(() => {
-      update(ref(db), {
+      const currentTime = new Date().getTime();
+      const updates: Record<string, unknown> = {
         [`rooms/${roomCode}/status`]: "game",
+        [`rooms/${roomCode}/discussionEndsAt`]: null,
         [`rooms/${roomCode}/meetingEndsAt`]: null,
         [`rooms/${roomCode}/alert`]: null,
-      });
+        [`rooms/${roomCode}/sabotage`]: {
+          active: false,
+          type: null,
+          cooldownEndsAt: currentTime + SABOTAGE_COOLDOWN,
+          expiresAt: 0,
+        },
+      };
+
+      if (room.players) {
+        Object.entries(room.players).forEach(([id, player]) => {
+          if (player.role === "impostor" && player.alive !== false) {
+            updates[`rooms/${roomCode}/players/${id}/killCooldownEndsAt`] =
+              currentTime + KILL_COOLDOWN;
+          }
+        });
+      }
+
+      update(ref(db), updates);
     }, 6000);
 
     return () => window.clearTimeout(timer);
@@ -336,6 +399,7 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
     updates[`rooms/${roomCode}/status`] = "lobby";
     updates[`rooms/${roomCode}/alert`] = null;
     updates[`rooms/${roomCode}/sabotage`] = null;
+    updates[`rooms/${roomCode}/discussionEndsAt`] = null;
     updates[`rooms/${roomCode}/meetingEndsAt`] = null;
     updates[`rooms/${roomCode}/meetingResult`] = null;
 
@@ -366,7 +430,15 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
   const currentPlayer = room.players?.[playerId];
   const amHost = room.hostId === playerId;
   const myVote = currentPlayer?.currentVote ?? null;
+  const displayedVote = myVote ?? selectedVote;
+  const voteLocked = Boolean(myVote);
+  const discussionActive = room.status === "meeting" && !room.meetingEndsAt;
+  const votingActive = room.status === "meeting" && Boolean(room.meetingEndsAt);
+  const canSelectVote = currentPlayer?.alive !== false && votingActive && !voteLocked;
   const voteCount = alivePlayers.filter(([, player]) => player.currentVote).length;
+  const discussionSecondsLeft = room.discussionEndsAt
+    ? Math.max(0, Math.ceil((room.discussionEndsAt - now) / 1000))
+    : 30;
   const secondsLeft = room.meetingEndsAt
     ? Math.max(0, Math.ceil((room.meetingEndsAt - now) / 1000))
     : 120;
@@ -377,7 +449,13 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
         {room.alert?.type === "body" ? "Body Reported" : "Emergency Meeting"}
       </p>
 
-      <h1>{room.status === "meetingReveal" ? "Vote Result" : "Discussion Time"}</h1>
+      <h1>
+        {room.status === "meetingReveal"
+          ? "Vote Result"
+          : discussionActive
+          ? "Get to the Meeting Table"
+          : "Voting Time"}
+      </h1>
 
       <div className="role-card">
         {room.status === "meetingReveal" && room.meetingResult ? (
@@ -401,13 +479,19 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
         )}
 
         <div className="progress-card">
-          <p>{room.status === "meeting" ? `Voting ends in ${secondsLeft}s` : "Vote Complete"}</p>
+          <p>
+            {room.status === "meetingReveal"
+              ? "Vote Complete"
+              : discussionActive
+              ? `Discussion starts in ${discussionSecondsLeft}s`
+              : `Voting ends in ${secondsLeft}s`}
+          </p>
           <strong>
-            {voteCount}/{alivePlayers.length}
+            {discussionActive ? "Move to table" : `${voteCount}/${alivePlayers.length}`}
           </strong>
         </div>
 
-        <h2>Players</h2>
+        <h2>{discussionActive ? "Players" : "Vote"}</h2>
 
         <div className="player-list">
           {players.map(([id, player]) => {
@@ -417,9 +501,17 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
             return (
               <button
                 key={id}
-                className={`player-card vote-card ${!isAlive ? "dead-player-card" : ""} ${myVote === id ? "selected-vote" : ""}`}
-                onClick={() => vote(id)}
-                disabled={!canVoteForPlayer || room.status !== "meeting"}
+                className={`player-card vote-card ${!isAlive ? "dead-player-card" : ""} ${displayedVote === id ? "selected-vote" : ""}`}
+                style={
+                  displayedVote === id
+                    ? {
+                        border: "3px solid #ff3333",
+                        backgroundColor: "rgba(255, 0, 0, 0.2)",
+                      }
+                    : undefined
+                }
+                onClick={() => selectVote(id)}
+                disabled={!canVoteForPlayer || !canSelectVote}
               >
                 <div className="player-avatar">
                   {player.name.charAt(0).toUpperCase()}
@@ -435,12 +527,37 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
         </div>
 
         <button
-          className={`secondary ${myVote === "skip" ? "selected-vote" : ""}`}
-          onClick={() => vote("skip")}
-          disabled={currentPlayer?.alive === false || room.status !== "meeting"}
+          className={`secondary ${displayedVote === "skip" ? "selected-vote" : ""}`}
+          style={
+            displayedVote === "skip"
+              ? {
+                  border: "3px solid #ff3333",
+                  backgroundColor: "rgba(255, 0, 0, 0.2)",
+                }
+              : undefined
+          }
+          onClick={() => selectVote("skip")}
+          disabled={!canSelectVote}
         >
           Skip Vote
         </button>
+
+        <button
+          onClick={confirmVote}
+          disabled={discussionActive || !canSelectVote || !selectedVote || isConfirmingVote}
+        >
+          {voteLocked
+            ? "Vote Locked"
+            : isConfirmingVote
+            ? "Confirming..."
+            : selectedVote === "skip"
+            ? "Confirm Skip"
+            : selectedVote
+            ? "Confirm Vote"
+            : "Select a Vote"}
+        </button>
+
+        {voteLocked && <p className="waiting-text">Your vote is locked in.</p>}
       </div>
 
       {amHost && (
@@ -452,7 +569,11 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
       )}
 
       {room.status === "meeting" ? (
-        <p className="waiting-text">Vote before time runs out...</p>
+        <p className="waiting-text">
+          {discussionActive
+            ? "Head to the meeting table. Voting will unlock soon."
+            : "Vote before time runs out..."}
+        </p>
       ) : (
         <p className="waiting-text">Returning to game...</p>
       )}

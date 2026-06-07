@@ -35,6 +35,8 @@ type Sabotage = {
   fixedA?: boolean;
   fixedB?: boolean;
   reactorHolders?: Record<string, boolean>;
+  freezeTargetId?: string;
+  freezeTargetName?: string;
 };
 
 type Room = {
@@ -51,7 +53,7 @@ type Props = {
 };
 
 const KILL_COOLDOWN = 30000;
-const SABOTAGE_COOLDOWN = 45000;
+const SABOTAGE_COOLDOWN = 60000;
 const LONG_SABOTAGE_DURATION = 90000;
 const FREEZE_DURATION = 30000;
 
@@ -61,6 +63,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
   const [now, setNow] = useState<number>(0);
   const [activeAlert, setActiveAlert] = useState<GameAlert | null>(null);
   const [isReporting, setIsReporting] = useState(false);
+  const [isChoosingFreezeTarget, setIsChoosingFreezeTarget] = useState(false);
   const lastAlertTimestamp = useRef<number | null>(null);
   const taskWinTriggered = useRef(false);
   const impostorWinTriggered = useRef(false);
@@ -107,6 +110,31 @@ function Game({ roomCode, playerId, setScreen }: Props) {
       const roomData = snapshot.val();
       setRoom(roomData);
       setPlayer(roomData.players?.[playerId] ?? null);
+
+      const currentPlayer = roomData.players?.[playerId] ?? null;
+
+      if (
+        roomData.status === "game" &&
+        currentPlayer?.role === "impostor" &&
+        !currentPlayer.killCooldownEndsAt
+      ) {
+        update(ref(db, `rooms/${roomCode}/players/${playerId}`), {
+          killCooldownEndsAt: new Date().getTime() + KILL_COOLDOWN,
+        });
+      }
+
+      if (
+        roomData.status === "game" &&
+        currentPlayer?.role === "impostor" &&
+        !roomData.sabotage
+      ) {
+        update(ref(db, `rooms/${roomCode}/sabotage`), {
+          active: false,
+          type: null,
+          cooldownEndsAt: new Date().getTime() + SABOTAGE_COOLDOWN,
+          expiresAt: 0,
+        });
+      }
 
       if (roomData.status === "meeting") {
         setIsReporting(false);
@@ -265,6 +293,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
 
   async function reportBody() {
     if (!player || isReporting) return;
+    if (!player.alive) return;
     if (room?.status !== "game") return;
 
     setIsReporting(true);
@@ -313,7 +342,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
     return String(getRandomNumber(10000, 99999));
   }
 
-  async function startSabotage(type: "o2" | "reactor" | "freeze") {
+  async function startSabotage(type: "o2" | "reactor" | "freeze", freezeTargetId?: string) {
     if (!player || player.role !== "impostor") return;
     if (room?.status !== "game") return;
 
@@ -323,13 +352,19 @@ function Game({ roomCode, playerId, setScreen }: Props) {
     if (currentSabotage?.active) return;
     if (now < cooldownEndsAt) return;
 
+    const freezeTarget = freezeTargetId && room?.players ? room.players[freezeTargetId] : null;
+
+    if (type === "freeze" && (!freezeTargetId || !freezeTarget || freezeTarget.alive === false)) {
+      return;
+    }
+
     const duration = type === "freeze" ? FREEZE_DURATION : LONG_SABOTAGE_DURATION;
     const expiresAt = new Date().getTime() + duration;
 
     const sabotage: Sabotage = {
       active: true,
       type,
-      cooldownEndsAt: new Date().getTime() + SABOTAGE_COOLDOWN,
+      cooldownEndsAt: type === "freeze" ? new Date().getTime() + SABOTAGE_COOLDOWN : 0,
       expiresAt,
     };
 
@@ -344,19 +379,31 @@ function Game({ roomCode, playerId, setScreen }: Props) {
       sabotage.reactorHolders = {};
     }
 
+    if (type === "freeze" && freezeTargetId && freezeTarget) {
+      sabotage.freezeTargetId = freezeTargetId;
+      sabotage.freezeTargetName = freezeTarget.name;
+    }
+
     playAlarm();
 
     await update(ref(db), {
       [`rooms/${roomCode}/sabotage`]: sabotage,
     });
+
+    setIsChoosingFreezeTarget(false);
   }
 
-  async function clearSabotage() {
+  async function clearSabotage(startCooldown = true) {
     await update(ref(db), {
       [`rooms/${roomCode}/sabotage/active`]: false,
       [`rooms/${roomCode}/sabotage/type`]: null,
+      [`rooms/${roomCode}/sabotage/cooldownEndsAt`]: startCooldown
+        ? new Date().getTime() + SABOTAGE_COOLDOWN
+        : room?.sabotage?.cooldownEndsAt ?? 0,
       [`rooms/${roomCode}/sabotage/expiresAt`]: 0,
       [`rooms/${roomCode}/sabotage/reactorHolders`]: null,
+      [`rooms/${roomCode}/sabotage/freezeTargetId`]: null,
+      [`rooms/${roomCode}/sabotage/freezeTargetName`]: null,
     });
   }
 
@@ -380,6 +427,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
     if (otherFixed) {
       updates[`rooms/${roomCode}/sabotage/active`] = false;
       updates[`rooms/${roomCode}/sabotage/type`] = null;
+      updates[`rooms/${roomCode}/sabotage/cooldownEndsAt`] = new Date().getTime() + SABOTAGE_COOLDOWN;
       updates[`rooms/${roomCode}/sabotage/expiresAt`] = 0;
     }
 
@@ -422,6 +470,10 @@ function Game({ roomCode, playerId, setScreen }: Props) {
 
   const sabotage = room?.sabotage ?? null;
   const sabotageActive = sabotage?.active === true;
+  const shouldShowSabotageOverlay =
+    sabotageActive &&
+    sabotage &&
+    (sabotage.type !== "freeze" || sabotage.freezeTargetId === playerId);
   const sabotageSecondsLeft = sabotage?.expiresAt
     ? Math.max(0, Math.ceil((sabotage.expiresAt - now) / 1000))
     : 0;
@@ -492,7 +544,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
     if (sabotage?.type !== "freeze") return;
     if (sabotageSecondsLeft > 0) return;
 
-    clearSabotage();
+    clearSabotage(false);
   }, [roomCode, sabotageActive, sabotage?.type, sabotageSecondsLeft]);
 
   useEffect(() => {
@@ -547,7 +599,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
         </div>
       )}
 
-      {sabotageActive && sabotage && (
+      {shouldShowSabotageOverlay && sabotage && (
         <div className="alert-overlay sabotage-overlay">
           <div className="alert-box">
             <h1>
@@ -563,7 +615,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
                 ? "Emergency button disabled. Head to Location A and Location B."
                 : sabotage.type === "reactor"
                 ? "Emergency button disabled. Three crewmates must hold the reactor."
-                : "Crewmates must freeze. Do not move."}
+                : "You have been frozen. Do not move."}
             </p>
 
             <h2>{sabotageSecondsLeft}s</h2>
@@ -603,7 +655,7 @@ function Game({ roomCode, playerId, setScreen }: Props) {
               </div>
             )}
 
-            {sabotage.type === "freeze" && player.role === "crewmate" && player.alive && (
+            {sabotage.type === "freeze" && sabotage.freezeTargetId === playerId && player.alive && (
               <p className="kill-ready">DO NOT MOVE</p>
             )}
           </div>
@@ -650,9 +702,31 @@ function Game({ roomCode, playerId, setScreen }: Props) {
             <button disabled={!sabotageReady} onClick={() => startSabotage("reactor")}>
               Reactor
             </button>
-            <button disabled={!sabotageReady} onClick={() => startSabotage("freeze")}>
+            <button
+              disabled={!sabotageReady}
+              onClick={() => setIsChoosingFreezeTarget((current) => !current)}
+            >
               Freeze
             </button>
+
+            {isChoosingFreezeTarget && (
+              <div className="meeting-actions">
+                <p>Choose one player to freeze:</p>
+                {room?.players &&
+                  Object.entries(room.players)
+                    .filter(([, target]) => target.alive !== false && target.role === "crewmate")
+                    .map(([targetId, target]) => (
+                      <button
+                        key={targetId}
+                        className="secondary"
+                        disabled={!sabotageReady}
+                        onClick={() => startSabotage("freeze", targetId)}
+                      >
+                        {target.name}
+                      </button>
+                    ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -682,15 +756,17 @@ function Game({ roomCode, playerId, setScreen }: Props) {
         </div>
       )}
 
-      <div className="meeting-actions">
-        <button
-          className="report-button"
-          onClick={reportBody}
-          disabled={isReporting || room?.status !== "game"}
-        >
-          {isReporting ? "Reporting..." : "Report Body"}
-        </button>
-      </div>
+      {player.alive && (
+        <div className="meeting-actions">
+          <button
+            className="report-button"
+            onClick={reportBody}
+            disabled={isReporting || room?.status !== "game"}
+          >
+            {isReporting ? "Reporting..." : "Report Body"}
+          </button>
+        </div>
+      )}
 
       <div className="role-card">
         <h2>

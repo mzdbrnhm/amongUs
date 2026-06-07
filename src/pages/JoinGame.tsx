@@ -16,8 +16,11 @@ function makePlayerId() {
 function JoinGame({ setScreen, setRoomCode, setPlayerId }: Props) {
   const [name, setName] = useState("");
   const [roomInput, setRoomInput] = useState("");
+  const [isJoining, setIsJoining] = useState(false);
 
   async function joinRoom() {
+    if (isJoining) return;
+
     if (!name.trim()) {
       alert("Enter your name first");
       return;
@@ -29,23 +32,32 @@ function JoinGame({ setScreen, setRoomCode, setPlayerId }: Props) {
     }
 
     const code = roomInput.trim().toUpperCase();
-    const snapshot = await get(child(ref(db), `rooms/${code}`));
+    setIsJoining(true);
 
-    if (!snapshot.exists()) {
-      alert("Room not found");
-      return;
+    try {
+      const snapshot = await get(child(ref(db), `rooms/${code}`));
+
+      if (!snapshot.exists()) {
+        alert("Room not found");
+        setIsJoining(false);
+        return;
+      }
+
+      const id = makePlayerId();
+
+      await set(ref(db, `rooms/${code}/players/${id}`), {
+        name: name.trim(),
+        isHost: false,
+      });
+
+      setRoomCode(code);
+      setPlayerId(id);
+      setScreen("lobby");
+    } catch (error) {
+      console.error("Failed to join room:", error);
+      alert("Could not join room. Please try again.");
+      setIsJoining(false);
     }
-
-    const id = makePlayerId();
-
-    await set(ref(db, `rooms/${code}/players/${id}`), {
-      name: name.trim(),
-      isHost: false,
-    });
-
-    setRoomCode(code);
-    setPlayerId(id);
-    setScreen("lobby");
   }
 
   return (
@@ -64,9 +76,11 @@ function JoinGame({ setScreen, setRoomCode, setPlayerId }: Props) {
         onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
       />
 
-      <button onClick={joinRoom}>Join Room</button>
+      <button onClick={joinRoom} disabled={isJoining}>
+        {isJoining ? "Joining..." : "Join Room"}
+      </button>
 
-      <button className="secondary" onClick={() => setScreen("home")}>
+      <button className="secondary" onClick={() => setScreen("home")} disabled={isJoining}>
         Back
       </button>
     </div>
