@@ -54,7 +54,7 @@ type Props = {
 
 const KILL_COOLDOWN = 30000;
 const SABOTAGE_COOLDOWN = 20000;
-const LONG_SABOTAGE_DURATION = 20000;
+const LONG_SABOTAGE_DURATION = 90000;
 const FREEZE_DURATION = 30000;
 
 function Game({ roomCode, playerId, setScreen }: Props) {

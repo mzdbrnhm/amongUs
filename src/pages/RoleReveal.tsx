@@ -29,7 +29,7 @@ type Props = {
 };
 
 const KILL_COOLDOWN = 30000;
-const SABOTAGE_COOLDOWN = 60000;
+const SABOTAGE_COOLDOWN = 20000;
 
 function RoleReveal({ roomCode, playerId, setScreen }: Props) {
   const [player, setPlayer] = useState<Player | null>(null);
