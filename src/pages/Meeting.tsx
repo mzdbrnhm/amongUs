@@ -176,7 +176,7 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
     if (!roomCode || !room) return;
     if (room.status !== "meeting") return;
 
-    const currentTime = new Date().getTime();
+    const currentTime = now || new Date().getTime();
 
     if (!room.discussionEndsAt) {
       update(ref(db), {
@@ -196,7 +196,7 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
         [`rooms/${roomCode}/meetingEndsAt`]: currentTime + 120000,
       });
     }
-  }, [room, roomCode]);
+  }, [room, roomCode, now]);
 
   function selectVote(targetId: string) {
     const currentPlayer = room?.players?.[playerId];
@@ -483,7 +483,7 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
             {room.status === "meetingReveal"
               ? "Vote Complete"
               : discussionActive
-              ? `Discussion starts in ${discussionSecondsLeft}s`
+              ? `Voting starts in ${discussionSecondsLeft}s`
               : `Voting ends in ${secondsLeft}s`}
           </p>
           <strong>
@@ -571,7 +571,7 @@ function Meeting({ roomCode, playerId, setScreen }: Props) {
       {room.status === "meeting" ? (
         <p className="waiting-text">
           {discussionActive
-            ? "Head to the meeting table. Voting will unlock soon."
+            ? "Head to the meeting table. Discussion time before voting."
             : "Vote before time runs out..."}
         </p>
       ) : (
